@@ -1,7 +1,7 @@
 # docker fpm php-8 phalcon-5
 
 ## catatan
-- phalcon 5.8 maksimal di php 8.3
+- phalcon 5.23 kompatibel dengan php 8.5
 - multibuilder lokal dan remote cek https://github.com/nimdasx/gits/blob/main/docker.md#lokal-builder-for-amd64-remote-builder-for-arm64
 
 ## command
