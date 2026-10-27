@@ -29,6 +29,8 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
     strategy:
       fail-fast: false
       matrix:
@@ -49,7 +51,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Login to GitHub Container Registry (GHCR)
-        if: github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || inputs.push_images)
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.push_images)
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -57,18 +59,24 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Login to Docker Hub
-        if: github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || inputs.push_images) && secrets.DOCKERHUB_USERNAME != ''
+        if: env.DOCKERHUB_USERNAME != '' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.push_images))
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Tentukan Tags Docker
+      - name: Tentukan Tags dan Argumen
         id: meta
+        env:
+          INPUT_PHALCON_VERSION: ${{ inputs.phalcon_version }}
         run: |
           PHP_VER="${{ matrix.php }}"
           IS_LATEST="${{ matrix.is_latest }}"
           OWNER_LC=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          
+          # Tentukan versi Phalcon (default 5.23.0 jika kosong)
+          PHALCON_VER="${INPUT_PHALCON_VERSION:-5.23.0}"
+          echo "phalcon_version=${PHALCON_VER}" >> $GITHUB_OUTPUT
           
           TAGS=""
           # GHCR Tags
@@ -78,10 +86,10 @@ jobs:
           fi
           
           # Docker Hub Tags (hanya jika DOCKERHUB_USERNAME tersedia)
-          if [ -n "${{ secrets.DOCKERHUB_USERNAME }}" ]; then
-            TAGS="${TAGS},${{ secrets.DOCKERHUB_USERNAME }}/fpm-php8-phalcon5:${PHP_VER}"
+          if [ -n "$DOCKERHUB_USERNAME" ]; then
+            TAGS="${TAGS},${DOCKERHUB_USERNAME}/fpm-php8-phalcon5:${PHP_VER}"
             if [ "$IS_LATEST" = "true" ]; then
-              TAGS="${TAGS},${{ secrets.DOCKERHUB_USERNAME }}/fpm-php8-phalcon5:latest"
+              TAGS="${TAGS},${DOCKERHUB_USERNAME}/fpm-php8-phalcon5:latest"
             fi
           fi
           
@@ -93,10 +101,10 @@ jobs:
           context: .
           file: ./Dockerfile
           platforms: linux/amd64,linux/arm64
-          push: ${{ github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || inputs.push_images) }}
+          push: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.push_images) }}
           tags: ${{ steps.meta.outputs.tags }}
           build-args: |
             PHP_VERSION=${{ matrix.php }}
-            PHALCON_VERSION=${{ inputs.phalcon_version || '5.23.0' }}
+            PHALCON_VERSION=${{ steps.meta.outputs.phalcon_version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
